@@ -15,15 +15,7 @@ import cv2
 sio = socketio.Server()
 app = Flask(__name__) #__main__
 maxSpeed = 10
-
-def preProcessing(img):
-    img = img[60:135, :, :]
-    img = cv2.cvtColor(img, cv2.COLOR_RGB2YUV)
-    img = cv2.GaussianBlur(img, (3, 3), 0)
-    img = cv2.resize(img, (200, 66))
-    img = img / 255
-
-    return img
+from src.preprocess import preprocess_image
 
 
 @sio.on('telemetry')
@@ -31,7 +23,7 @@ def telemetry(sid, data):
     speed = float(data['speed'])
     image = Image.open(BytesIO(base64.b64decode(data['image'])))
     image = np.asarray(image)
-    image = preProcessing(image)
+    image = preprocess_image(image)
     image = np.array([image])
     steering = float(model.predict(image))
     throttle = 1.0 - speed/maxSpeed

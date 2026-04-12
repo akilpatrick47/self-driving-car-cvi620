@@ -9,9 +9,9 @@ from tensorflow.keras import Sequential, layers
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
 
-from preprocess import (load_data, balance_dataset, split_data,
+from src.preprocess import (load_data, balance_dataset, split_data,
                         preprocess_image, IMG_HEIGHT, IMG_WIDTH)
-from augment import augment_image
+from src.augment import augment_image
 
 
 # ─────────────────────────────────────────────────────────────────────────────
