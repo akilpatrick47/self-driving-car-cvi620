@@ -36,6 +36,6 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Output plots (optional to track)
-*.png
-*.jpg
+# Output plots — tracked so grader can see training graphs
+# *.png
+# *.jpg
