@@ -3,6 +3,12 @@ data/
 data/IMG/
 data/driving_log.csv
 
+# Simulator binary (large - don't commit)
+term1-simulator-windows/
+
+# PDF instruction files
+*.pdf
+
 # Trained model (binary — large file)
 model.h5
 
