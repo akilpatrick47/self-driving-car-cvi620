@@ -6,23 +6,28 @@ Flask-SocketIO and drives the car using the trained Nvidia CNN model.
 
 Usage
 -----
-1. Activate your virtual environment
-2. Run:  python TestSimulation.py
-3. Launch beta_simulator.exe → select a track → click "Autonomous Mode"
+1. Activate your virtual environment:
+       venv\Scripts\activate
+2. Run:
+       python TestSimulation.py
+3. Launch beta_simulator.exe → choose a track → click "Autonomous Mode"
 
-The server listens on port 4567.  The simulator connects automatically.
+The server listens on port 4567. The simulator connects automatically.
 
-Package versions (must match virtual environment):
+Compatible package versions (must match virtual environment):
     flask             == 1.1.2
     flask-socketio    == 3.3.1
     python-socketio   == 4.2.1
-    python-engineio   == 3.8.2
+    python-engineio   == 3.8.2.post1
     eventlet          == 0.25.1
+    tensorflow        == 2.3.0
 """
 
-import base64
 import os
+print('Setting Up ...')
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'   # suppress TF info/warning logs
 
+import base64
 import cv2
 import eventlet
 import numpy as np
@@ -30,116 +35,101 @@ import socketio
 from flask import Flask
 from io import BytesIO
 from PIL import Image
-from keras.models import load_model
-
-from preprocess import preprocess_image
+from tensorflow.keras.models import load_model
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Configuration
 # ─────────────────────────────────────────────────────────────────────────────
-MODEL_PATH   = 'models/model.h5'
-MAX_SPEED    = 25    # km/h cruise target
-MIN_SPEED    = 10    # km/h minimum before applying extra throttle
-SPEED_LIMIT  = 30    # km/h hard cap used in throttle formula
+MODEL_PATH = 'model.h5'
+MAX_SPEED  = 10     # speed cap used in throttle formula (km/h)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Flask + SocketIO setup
-# Compatible with python-socketio 4.x  /  flask-socketio 3.x
+# Flask + SocketIO setup  (python-socketio 4.x / flask-socketio 3.x style)
 # ─────────────────────────────────────────────────────────────────────────────
-sio  = socketio.Server()
-app  = Flask(__name__)
-app.wsgi_app = socketio.Middleware(sio, app.wsgi_app)
+sio = socketio.Server()
+app = Flask(__name__)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Load the trained model once at startup
+# Image preprocessing  (must exactly match the preprocessing used in training)
+# Pipeline: crop → RGB→YUV → Gaussian blur → resize 200×66 → normalize
+# NOTE: PIL.Image gives RGB, so we convert RGB→YUV (not BGR→YUV)
 # ─────────────────────────────────────────────────────────────────────────────
-if not os.path.exists(MODEL_PATH):
-    raise FileNotFoundError(
-        f'Trained model not found at "{MODEL_PATH}". '
-        'Run train.py first to generate the model.'
-    )
+def preProcessing(img: np.ndarray) -> np.ndarray:
+    """
+    Preprocess a raw simulator image before feeding it to the model.
 
-model = load_model(MODEL_PATH)
-print(f'[INFO] Model loaded from {MODEL_PATH}')
+    Parameters
+    ----------
+    img : np.ndarray  RGB image decoded from PIL (simulator sends RGB JPEG)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Helper — decode base64 image sent by the simulator
-# ─────────────────────────────────────────────────────────────────────────────
-def decode_image(image_b64: str) -> np.ndarray:
-    """Convert simulator base-64 JPEG string → BGR numpy array."""
-    img_bytes = base64.b64decode(image_b64)
-    img_pil   = Image.open(BytesIO(img_bytes))
-    img_rgb   = np.array(img_pil)
-    img_bgr   = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
-    return img_bgr
+    Returns
+    -------
+    np.ndarray  shape (66, 200, 3)  float32  normalized to [0, 1]
+    """
+    img = img[60:135, :, :]                          # crop sky + hood
+    img = cv2.cvtColor(img, cv2.COLOR_RGB2YUV)       # RGB → YUV
+    img = cv2.GaussianBlur(img, (3, 3), 0)           # noise reduction
+    img = cv2.resize(img, (200, 66))                 # Nvidia input size
+    img = img / 255                                  # normalize to [0, 1]
+    return img
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SocketIO event handlers
 # ─────────────────────────────────────────────────────────────────────────────
-@sio.on('connect')
-def on_connect(sid, environ):
-    print(f'[INFO] Simulator connected  (sid={sid})')
-    send_control(0.0, 0.0)   # send neutral command on connect
-
-
-@sio.on('disconnect')
-def on_disconnect(sid):
-    print(f'[INFO] Simulator disconnected (sid={sid})')
-
-
 @sio.on('telemetry')
-def on_telemetry(sid, data):
+def telemetry(sid, data):
     """
-    Received on every simulator frame.
-    data keys: 'image'   – base64 JPEG of front camera
-               'speed'   – current vehicle speed (km/h)
-               'throttle', 'brake', 'steering_angle' – current actuator values
+    Called on every simulator frame.
+    Receives camera image + speed → predicts steering → sends control back.
     """
-    if data is None:
-        send_control(0.0, 0.0)
-        return
+    speed = float(data['speed'])
 
-    # 1. Decode + preprocess the front-camera image
-    img = decode_image(data['image'])
-    img = preprocess_image(img)                        # → (66, 200, 3) float32
-    img_input = np.expand_dims(img, axis=0)            # → (1, 66, 200, 3)
+    # Decode base64 JPEG → PIL → numpy (RGB)
+    image = Image.open(BytesIO(base64.b64decode(data['image'])))
+    image = np.asarray(image)
 
-    # 2. Predict steering angle
-    steering_angle = float(model.predict(img_input, verbose=0)[0][0])
+    # Preprocess + add batch dimension
+    image = preProcessing(image)
+    image = np.array([image])
 
-    # 3. Compute throttle (simple speed regulator)
-    speed = float(data.get('speed', 0))
-    throttle = 1.0 - (speed / SPEED_LIMIT) ** 2
+    # Predict steering angle
+    steering = float(model.predict(image))
 
-    # Clamp values to safe ranges
-    steering_angle = float(np.clip(steering_angle, -1.0, 1.0))
-    throttle       = float(np.clip(throttle, 0.0, 1.0))
+    # Simple speed regulator: apply more throttle when slow
+    throttle = 1.0 - speed / MAX_SPEED
 
-    print(f'  Steering: {steering_angle:+.4f}  |  '
-          f'Throttle: {throttle:.4f}  |  Speed: {speed:.1f} km/h')
+    print(f'Throttle: {throttle:.4f} | Steering: {steering:+.4f} | Speed: {speed:.1f}')
+    sendControl(steering, throttle)
 
-    send_control(steering_angle, throttle)
+
+@sio.on('connect')
+def connect(sid, environ):
+    print('Connected to simulator')
+    sendControl(0, 0)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Send control command back to the simulator
+# Send steering + throttle command to simulator
 # ─────────────────────────────────────────────────────────────────────────────
-def send_control(steering_angle: float, throttle: float):
-    sio.emit('steer', {
-        'steering_angle': str(steering_angle),
-        'throttle': str(throttle)
+def sendControl(steering, throttle):
+    sio.emit('steer', data={
+        'steering_angle': steering.__str__(),
+        'throttle':       throttle.__str__()
     })
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Main
+# Entry point
 # ─────────────────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
+    model = load_model(MODEL_PATH)
+    print(f'[INFO] Model loaded from {MODEL_PATH}')
     print('[INFO] Server starting on port 4567 …')
     print('[INFO] Launch the Udacity simulator and select Autonomous Mode.')
+
+    app = socketio.Middleware(sio, app)
     eventlet.wsgi.server(eventlet.listen(('', 4567)), app)

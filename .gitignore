@@ -3,8 +3,8 @@ data/
 data/IMG/
 data/driving_log.csv
 
-# Trained models (binary files - too large for git)
-models/*.h5
+# Trained model (binary — large file)
+model.h5
 
 # Python cache
 __pycache__/
@@ -16,6 +16,7 @@ __pycache__/
 venv/
 env/
 .env/
+.venv/
 *.egg-info/
 
 # Jupyter checkpoints

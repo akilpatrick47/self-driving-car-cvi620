@@ -1,9 +1,13 @@
+import os
+print('Setting Up ...')
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
-from keras import Sequential, layers
-from keras.optimizers import Adam
-from keras.callbacks import ModelCheckpoint, EarlyStopping
+from tensorflow.keras import Sequential, layers
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
 
 from preprocess import (load_data, balance_dataset, split_data,
                         preprocess_image, IMG_HEIGHT, IMG_WIDTH)
@@ -16,7 +20,7 @@ from augment import augment_image
 EPOCHS      = 30
 BATCH_SIZE  = 64
 LEARNING_RATE = 1e-3
-MODEL_PATH  = 'models/model.h5'
+MODEL_PATH  = 'model.h5'   # saved to project root (matches TestSimulation.py)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -131,8 +135,6 @@ def plot_history(H, epochs: int):
 
 
 def train():
-    import os
-    os.makedirs('models', exist_ok=True)
 
     # 1. Load + balance data
     image_paths, steering = load_data()
