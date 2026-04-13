@@ -19,7 +19,7 @@ from augment import augment_image
 # ─────────────────────────────────────────────────────────────────────────────
 EPOCHS      = 30
 BATCH_SIZE  = 64
-LEARNING_RATE = 1e-3
+LEARNING_RATE = 1e-4
 MODEL_PATH  = 'model.h5'   # saved to project root (matches TestSimulation.py)
 
 
@@ -152,7 +152,7 @@ def train():
     callbacks = [
         ModelCheckpoint(MODEL_PATH, monitor='val_loss',
                         save_best_only=True, verbose=1),
-        EarlyStopping(monitor='val_loss', patience=5,
+        EarlyStopping(monitor='val_loss', patience=10,
                       restore_best_weights=True, verbose=1)
     ]
 

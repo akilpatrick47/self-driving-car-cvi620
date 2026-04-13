@@ -13,7 +13,7 @@ DATA_DIR = 'data'          # folder that contains driving_log.csv and IMG/
 IMG_HEIGHT = 66            # Nvidia model input height
 IMG_WIDTH = 200            # Nvidia model input width
 NUM_BINS = 25              # bins used to balance the steering histogram
-MAX_SAMPLES_PER_BIN = 200  # max samples kept per bin (balance threshold)
+MAX_SAMPLES_PER_BIN = 400  # max samples kept per bin (balance threshold)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
