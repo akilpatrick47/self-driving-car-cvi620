@@ -1,49 +1,58 @@
-
 import os
-print('Setting Up ...')
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-import socketio
-import eventlet
-import numpy as np
-from tensorflow.keras.models import load_model
-from flask import Flask
 import base64
 from io import BytesIO
+from typing import Any
+
+import eventlet
+import numpy as np
+import socketio
+from flask import Flask
 from PIL import Image
-import cv2
+from tensorflow.keras.models import load_model
+
+print('Setting Up ...')
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
+from src.preprocess import preprocess_image
 
 sio = socketio.Server()
-app = Flask(__name__) #__main__
-maxSpeed = 10
-from src.preprocess import preprocess_image
+app = Flask(__name__)  # __main__
+MAX_SPEED = 10
 
 
 @sio.on('telemetry')
-def telemetry(sid, data):
+def telemetry(sid: str, data: dict[str, Any]) -> None:
+    """Receive simulator telemetry, run inference, and emit controls."""
     speed = float(data['speed'])
-    image = Image.open(BytesIO(base64.b64decode(data['image'])))
-    image = np.asarray(image)
-    image = preprocess_image(image)
-    image = np.array([image])
-    steering = float(model.predict(image))
-    throttle = 1.0 - speed/maxSpeed
+    frame_rgb = Image.open(BytesIO(base64.b64decode(data['image'])))
+    frame_array = np.asarray(frame_rgb)
+    frame_processed = preprocess_image(frame_array)
+    model_input = np.array([frame_processed])
+    steering = float(model.predict(model_input))
+    throttle = 1.0 - speed / MAX_SPEED
     print(f'{throttle}, {steering}, {speed}')
-    sendControl(steering, throttle)
+    send_control(steering, throttle)
 
 
 @sio.on('connect')
-def connect(sid, environ):
+def connect(sid: str, environ: dict[str, Any]) -> None:
+    """Initialize steering/throttle state when a client connects."""
     print('Connected')
-    sendControl(0, 0)
+    send_control(0, 0)
 
 
-def sendControl(steering, throttle):
-    sio.emit('steer', data={
-        'steering_angle' : steering.__str__(),
-        'throttle' : throttle.__str__()
-    })
+def send_control(steering: float, throttle: float) -> None:
+    """Emit steering and throttle commands to the simulator."""
+    sio.emit(
+        'steer',
+        data={
+            'steering_angle': steering.__str__(),
+            'throttle': throttle.__str__(),
+        },
+    )
 
-if __name__ == "__main__":
+
+if __name__ == '__main__':
     model = load_model('model.h5')
     app = socketio.Middleware(sio, app)
     eventlet.wsgi.server(eventlet.listen(('', 4567)), app)

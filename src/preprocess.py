@@ -1,8 +1,10 @@
-import pandas as pd
-import numpy as np
-import cv2
 import os
+from typing import Sequence
+
+import cv2
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 from sklearn.model_selection import train_test_split
 
 
@@ -19,7 +21,7 @@ MAX_SAMPLES_PER_BIN = 400  # max samples kept per bin (balance threshold)
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. Load CSV
 # ─────────────────────────────────────────────────────────────────────────────
-def load_data(data_dir: str = DATA_DIR):
+def load_data(data_dir: str = DATA_DIR) -> tuple[list[str], np.ndarray]:
     """
     Load driving_log.csv and return image paths + steering angles.
     Only uses the center camera.
@@ -27,7 +29,9 @@ def load_data(data_dir: str = DATA_DIR):
     Returns
     -------
     image_paths : list[str]
-    steering    : np.ndarray  (float32)
+        Absolute/relative paths to center camera images.
+    steering : np.ndarray
+        Steering values with shape `(num_samples,)` and dtype `float32`.
     """
     csv_path = os.path.join(data_dir, 'driving_log.csv')
     df = pd.read_csv(csv_path, header=None,
@@ -49,18 +53,23 @@ def load_data(data_dir: str = DATA_DIR):
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. Balance the dataset
 # ─────────────────────────────────────────────────────────────────────────────
-def balance_dataset(image_paths: list, steering: np.ndarray,
-                    num_bins: int = NUM_BINS,
-                    max_samples: int = MAX_SAMPLES_PER_BIN,
-                    visualize: bool = True):
+def balance_dataset(
+    image_paths: Sequence[str],
+    steering: np.ndarray,
+    num_bins: int = NUM_BINS,
+    max_samples: int = MAX_SAMPLES_PER_BIN,
+    visualize: bool = True,
+) -> tuple[list[str], np.ndarray]:
     """
     Undersample over-represented steering bins so the distribution is flat.
     Optionally plots a before/after histogram.
 
     Returns
     -------
-    balanced_paths    : list[str]
+    balanced_paths : list[str]
+        Paths kept after per-bin undersampling.
     balanced_steering : np.ndarray
+        Steering array aligned to `balanced_paths`.
     """
     hist, bin_edges = np.histogram(steering, bins=num_bins)
 
@@ -111,14 +120,20 @@ def balance_dataset(image_paths: list, steering: np.ndarray,
 # ─────────────────────────────────────────────────────────────────────────────
 # 3. Train / validation split
 # ─────────────────────────────────────────────────────────────────────────────
-def split_data(image_paths: list, steering: np.ndarray,
-               test_size: float = 0.2, random_state: int = 42):
+def split_data(
+    image_paths: Sequence[str],
+    steering: np.ndarray,
+    test_size: float = 0.2,
+    random_state: int = 42,
+) -> tuple[list[str], list[str], np.ndarray, np.ndarray]:
     """
     Split into training and validation sets.
 
     Returns
     -------
-    X_train, X_val, y_train, y_val
+    tuple[list[str], list[str], np.ndarray, np.ndarray]
+        Training image paths, validation image paths, training steering,
+        validation steering.
     """
     X_train, X_val, y_train, y_val = train_test_split(
         image_paths, steering,
@@ -143,11 +158,13 @@ def preprocess_image(img: np.ndarray) -> np.ndarray:
 
     Parameters
     ----------
-    img : np.ndarray  BGR image as returned by cv2.imread / cv2.imdecode
+    img : np.ndarray
+        BGR image as returned by `cv2.imread` / `cv2.imdecode`.
 
     Returns
     -------
-    np.ndarray  shape (66, 200, 3)  float32
+    np.ndarray
+        Normalized tensor with shape `(66, 200, 3)` and dtype `float32`.
     """
     # Step 1 – crop: remove top 60 rows (sky) and bottom 25 rows (hood)
     img = img[60:135, :, :]

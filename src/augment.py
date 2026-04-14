@@ -1,6 +1,12 @@
+from typing import Callable
+
 import cv2
 import numpy as np
 import random
+
+
+AugmentResult = tuple[np.ndarray, float]
+AugmentFn = Callable[[np.ndarray, float], AugmentResult]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -8,7 +14,7 @@ import random
 # Each receives a BGR image + steering angle, returns augmented versions.
 # ─────────────────────────────────────────────────────────────────────────────
 
-def random_flip(img: np.ndarray, steering: float):
+def random_flip(img: np.ndarray, steering: float) -> AugmentResult:
     """
     Horizontally flip the image 50 % of the time.
     When flipped the steering angle must be negated.
@@ -19,7 +25,7 @@ def random_flip(img: np.ndarray, steering: float):
     return img, steering
 
 
-def random_brightness(img: np.ndarray, steering: float):
+def random_brightness(img: np.ndarray, steering: float) -> AugmentResult:
     """
     Randomly adjust brightness by converting to HSV and
     scaling the V channel.
@@ -31,7 +37,7 @@ def random_brightness(img: np.ndarray, steering: float):
     return img, steering
 
 
-def random_zoom(img: np.ndarray, steering: float):
+def random_zoom(img: np.ndarray, steering: float) -> AugmentResult:
     """
     Random zoom-in crop between 1× and 1.3× magnification.
     """
@@ -46,7 +52,7 @@ def random_zoom(img: np.ndarray, steering: float):
     return img, steering
 
 
-def random_pan(img: np.ndarray, steering: float):
+def random_pan(img: np.ndarray, steering: float) -> AugmentResult:
     """
     Randomly translate the image horizontally/vertically by up to 10 % of
     width/height. Adjust steering proportionally for horizontal shift.
@@ -66,10 +72,10 @@ def random_pan(img: np.ndarray, steering: float):
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Pool of augmentation functions (excluding flip, applied separately)
-_AUG_POOL = [random_brightness, random_zoom, random_pan]
+_AUG_POOL: list[AugmentFn] = [random_brightness, random_zoom, random_pan]
 
 
-def augment_image(img: np.ndarray, steering: float):
+def augment_image(img: np.ndarray, steering: float) -> AugmentResult:
     """
     Apply a random subset of augmentation techniques to one image.
     Flip is always considered; 1-2 additional transforms are applied at random.
@@ -81,8 +87,10 @@ def augment_image(img: np.ndarray, steering: float):
 
     Returns
     -------
-    img      : np.ndarray  augmented BGR image
-    steering : float       (possibly modified)
+    img : np.ndarray
+        Augmented BGR image with the same shape as input.
+    steering : float
+        Possibly modified steering value after geometric transforms.
     """
     # Always consider flip
     img, steering = random_flip(img, steering)

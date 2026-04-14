@@ -1,17 +1,25 @@
 import os
+from typing import Iterator, Sequence
+
 print('Setting Up ...')
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 import cv2
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from tensorflow.keras import Sequential, layers
+from tensorflow.keras.callbacks import EarlyStopping, History, ModelCheckpoint
 from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
 
-from src.preprocess import (load_data, balance_dataset, split_data,
-                        preprocess_image, IMG_HEIGHT, IMG_WIDTH)
 from src.augment import augment_image
+from src.preprocess import (
+    IMG_HEIGHT,
+    IMG_WIDTH,
+    balance_dataset,
+    load_data,
+    preprocess_image,
+    split_data,
+)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -28,8 +36,12 @@ MODEL_PATH  = 'model.h5'   # saved to project root (matches TestSimulation.py)
 #   - Training  : loads image → augment → preprocess
 #   - Validation: loads image → preprocess only
 # ─────────────────────────────────────────────────────────────────────────────
-def batch_generator(image_paths: list, steering_angles: np.ndarray,
-                    batch_size: int, is_training: bool):
+def batch_generator(
+    image_paths: Sequence[str],
+    steering_angles: np.ndarray,
+    batch_size: int,
+    is_training: bool,
+) -> Iterator[tuple[np.ndarray, np.ndarray]]:
     """
     Infinite generator that yields (X_batch, y_batch) tuples.
 
@@ -49,8 +61,8 @@ def batch_generator(image_paths: list, steering_angles: np.ndarray,
         for start in range(0, num_samples, batch_size):
             batch_idx = indices[start:start + batch_size]
 
-            X_batch = []
-            y_batch = []
+            X_batch: list[np.ndarray] = []
+            y_batch: list[float] = []
 
             for i in batch_idx:
                 img = cv2.imread(image_paths[i])
@@ -64,15 +76,17 @@ def batch_generator(image_paths: list, steering_angles: np.ndarray,
                 X_batch.append(img)
                 y_batch.append(angle)
 
-            yield np.array(X_batch, dtype=np.float32), \
-                  np.array(y_batch,  dtype=np.float32)
+            yield (
+                np.array(X_batch, dtype=np.float32),
+                np.array(y_batch, dtype=np.float32),
+            )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Nvidia CNN Architecture
 #   Reference: "End to End Learning for Self-Driving Cars" (Bojarski et al.)
 # ─────────────────────────────────────────────────────────────────────────────
-def build_model(input_shape=(IMG_HEIGHT, IMG_WIDTH, 3)) -> Sequential:
+def build_model(input_shape: tuple[int, int, int] = (IMG_HEIGHT, IMG_WIDTH, 3)) -> Sequential:
     """
     Build and compile the Nvidia self-driving CNN.
 
@@ -117,13 +131,21 @@ def build_model(input_shape=(IMG_HEIGHT, IMG_WIDTH, 3)) -> Sequential:
 # ─────────────────────────────────────────────────────────────────────────────
 # Training
 # ─────────────────────────────────────────────────────────────────────────────
-def plot_history(H, epochs: int):
+def plot_history(history: History) -> None:
     """Save and display training / validation loss curves."""
     plt.figure(figsize=(8, 4))
-    plt.plot(range(1, len(H.history['loss']) + 1),
-             H.history['loss'], label='Train Loss', color='steelblue')
-    plt.plot(range(1, len(H.history['val_loss']) + 1),
-             H.history['val_loss'], label='Val Loss', color='tomato')
+    plt.plot(
+        range(1, len(history.history['loss']) + 1),
+        history.history['loss'],
+        label='Train Loss',
+        color='steelblue',
+    )
+    plt.plot(
+        range(1, len(history.history['val_loss']) + 1),
+        history.history['val_loss'],
+        label='Val Loss',
+        color='tomato',
+    )
     plt.xlabel('Epoch')
     plt.ylabel('MSE Loss')
     plt.title('Training / Validation Loss')
@@ -134,7 +156,7 @@ def plot_history(H, epochs: int):
     print('[INFO] Loss plot saved to training_loss.png')
 
 
-def train():
+def train() -> None:
 
     # 1. Load + balance data
     image_paths, steering = load_data()
@@ -163,18 +185,19 @@ def train():
     print(f'[INFO] Starting training | Epochs: {EPOCHS} | '
           f'Batch: {BATCH_SIZE} | LR: {LEARNING_RATE}')
 
-    H = model.fit(
+    history = model.fit(
         batch_generator(X_train, y_train, BATCH_SIZE, is_training=True),
         steps_per_epoch=steps_train,
-        validation_data=batch_generator(X_val, y_val, BATCH_SIZE,
-                                         is_training=False),
+        validation_data=batch_generator(
+            X_val, y_val, BATCH_SIZE, is_training=False
+        ),
         validation_steps=steps_val,
         epochs=EPOCHS,
         callbacks=callbacks
     )
 
     # 6. Plot and save loss curves
-    plot_history(H, EPOCHS)
+    plot_history(history)
 
     print(f'[INFO] Best model saved to {MODEL_PATH}')
 
