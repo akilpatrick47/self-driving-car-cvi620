@@ -5,6 +5,9 @@ data/
 data/IMG/
 data/driving_log.csv
 
+# Large archives
+*.zip
+
 # Simulator binary (large - don't commit)
 term1-simulator-windows/
 

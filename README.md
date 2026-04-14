@@ -8,37 +8,38 @@
 
 ## Project Overview
 
-This project implements an **end-to-end neural network** that learns to steer a simulated car directly from front-camera images. The model is based on Nvidia's published architecture from the paper *"End to End Learning for Self-Driving Cars"* (Bojarski et al., 2016).
+This project implements an end-to-end neural network that learns to steer a simulated car directly from front-camera images. The model is based on Nvidia's architecture from the paper *"End to End Learning for Self-Driving Cars"* (Bojarski et al., 2016).
 
-The trained model is evaluated inside the **Udacity self-driving car simulator**, where it controls the vehicle in real-time by predicting a steering angle for each incoming camera frame.
+The trained model is evaluated inside the Udacity self-driving car simulator, where it controls the vehicle in real-time by predicting a steering angle for each incoming camera frame.
 
 ---
 
 ## Approach
 
 ### 1. Data Collection
-Training data is collected by manually driving the car in the Udacity simulator's **Training Mode**. The simulator saves:
-- `data/IMG/` — JPEG images from the centre, left, and right cameras
-- `data/driving_log.csv` — timestamp, image paths, steering angle, throttle, brake, and speed
+Training data is collected by manually driving the car in the Udacity simulator's Training Mode. The simulator saves:
+- `data/IMG/` — JPEG images from the centre camera
+- `data/driving_log.csv` — image paths, steering angle, throttle, brake, and speed
 
-We use only the **centre camera** and the **steering angle** column.
+We use only the centre camera and the steering angle column.
 
 ### 2. Dataset Balancing
-A histogram of steering angles from manual driving typically shows a heavy bias toward 0° (driving straight). We undersample over-represented bins so the model learns to handle all steering situations evenly.
+A histogram of steering angles typically shows a heavy bias toward 0° (driving straight). We undersample over-represented bins so the model learns to handle curves evenly.
 
 ### 3. Data Augmentation (training only)
-To improve generalisation and prevent overfitting, we apply the following augmentations randomly during training:
+To improve generalisation and prevent overfitting we apply random augmentations:
 - **Horizontal flip** — mirrors the image and negates the steering angle
 - **Brightness adjustment** — random HSV brightness scaling
-- **Zoom** — random crop-and-resize magnification
+- **Zoom** — random crop-and-resize
 - **Panning** — random horizontal/vertical translation
 
-### 4. Preprocessing (applied to all images including at inference)
-1. Crop the top 60 rows (sky) and bottom 25 rows (car hood)
-2. Convert BGR → **YUV** colour space (as specified by Nvidia)
+### 4. Preprocessing
+Applied to all images including during inference:
+1. Crop top 60 rows (sky) and bottom 25 rows (hood)
+2. Convert to YUV colour space (as specified by Nvidia)
 3. Gaussian blur (3×3 kernel)
-4. Resize to **200 × 66** pixels
-5. Normalise pixel values to **[0, 1]**
+4. Resize to 200 × 66 pixels
+5. Normalize pixel values to [0, 1]
 
 ### 5. Model Architecture
 Nvidia's CNN for self-driving:
@@ -56,23 +57,24 @@ Nvidia's CNN for self-driving:
 | Dense | 10 units, ReLU |
 | Dense | 1 unit (steering angle output) |
 
-- **Loss:** Mean Squared Error (regression)  
-- **Optimizer:** Adam (lr = 0.001)  
-- **Callbacks:** EarlyStopping (patience=5), ModelCheckpoint (saves best val_loss)
+- **Loss:** Mean Squared Error  
+- **Optimizer:** Adam (lr = 0.0001)  
+- **Callbacks:** EarlyStopping (patience=10), ModelCheckpoint (saves best val_loss)
 
 ### 6. Testing
-A Flask-SocketIO server (`TestSimulation.py`) listens on port **4567**. When the simulator is launched in **Autonomous Mode**, it connects to this server and sends a camera frame on every tick. The server preprocesses the frame, runs model inference, and sends back `steering_angle` + `throttle`.
+A Flask-SocketIO server (`TestSimulation.py`) listens on port 4567. When the simulator runs in Autonomous Mode it connects to the server, which preprocesses each frame, runs inference, and sends back steering and throttle commands.
 
 ---
 
-## Challenges Encountered
+## Challenges
 
 | Challenge | Solution |
 |-----------|----------|
-| Heavy straight-steering bias in training data | Histogram-based undersampling to balance distribution |
+| Heavy straight-steering bias in data | Histogram-based undersampling |
 | Model overfitting | Dropout layers + EarlyStopping |
-| Simulator protocol compatibility | Locked package versions to match `package_list.txt` (flask-socketio 3.3.1 / python-socketio 4.2.1 / eventlet 0.25.1) |
-| Image paths different on each machine | Programmatic path normalisation using `os.path.basename` |
+| Simulator package compatibility | Pinned versions (flask-socketio 3.3.1, python-socketio 4.2.1, eventlet 0.25.1) |
+| Image paths differing per machine | Path normalisation using `os.path.basename` |
+| protobuf/jinja2/dnspython breaking imports | Pinned compatible versions in requirements.txt |
 
 ---
 
@@ -80,89 +82,70 @@ A Flask-SocketIO server (`TestSimulation.py`) listens on port **4567**. When the
 
 ```
 finalProject/
-├── preprocess.py        # Data loading, balancing, image preprocessing
-├── augment.py           # Data augmentation functions
-├── train.py             # Nvidia CNN definition + training pipeline
-├── TestSimulation.py    # Simulator socketio server (autonomous driving)
+├── TestSimulation.py    # Simulator server (autonomous driving)
 ├── requirements.txt     # Pinned dependencies
-├── README.md            # This file
+├── README.md
 ├── .gitignore
-├── data/                # ⚠ NOT committed — generated by simulator
+├── src/
+│   ├── preprocess.py    # Data loading, balancing, preprocessing
+│   ├── augment.py       # Data augmentation functions
+│   └── train.py         # Nvidia CNN + training pipeline
+├── data/                # NOT committed — generated by simulator
 │   ├── IMG/
 │   └── driving_log.csv
-└── models/              # ⚠ NOT committed (binary) — created after training
-    └── model.h5
+└── model.h5             # NOT committed — created after training
 ```
 
 ---
 
 ## Environment Setup
 
-> **Requirements:** Python 3.8, Conda, NVIDIA GPU recommended
-
-### Option A — Conda (recommended, matches course environment)
+> **Requirements:** Python 3.8
 
 ```bash
-# 1. Create a new conda environment
-conda create -n selfdriving python=3.8 -y
-conda activate selfdriving
-
-# 2. Install dependencies
-pip install -r requirements.txt
-```
-
-### Option B — Virtualenv
-
-```bash
+# Create virtual environment
 python -m venv venv
 venv\Scripts\activate        # Windows
+
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-> **GPU users:** Install `tensorflow-gpu==2.3.0` and ensure CUDA 10.1 + cuDNN 7.6 are installed.
+---
+
+## Collect Data
+
+1. Run `beta_simulator.exe` (Term 1 build)
+2. Choose **Training Mode**
+3. Click **Record** → select the `data/` folder in this project
+4. Drive ~5 laps forward and ~5 laps in reverse
+5. Click **Record** again to stop
 
 ---
 
-## Step-by-Step: Collect Data
-
-1. **Download** the [Udacity Self-Driving Car Simulator](https://github.com/udacity/self-driving-car-sim/releases) (Windows — Term 1 build)
-2. Extract and run `beta_simulator.exe`
-3. Choose **Training Mode**
-4. Click **Record** (top menu) → select the `data/` folder in this project
-5. Drive the car ~5 laps forward and ~5 laps in reverse
-6. Click **Record** again to stop — `IMG/` and `driving_log.csv` will appear in `data/`
-
----
-
-## Step-by-Step: Train the Model
+## Train the Model
 
 ```bash
-# From the finalProject directory with your environment active:
-python train.py
+# From the finalProject directory with venv active:
+python -m src.train
 ```
 
 This will:
-- Load and balance the dataset (steering histogram plot saved)
-- Train the Nvidia CNN for up to 30 epochs (EarlyStopping applies)
-- Save `models/model.h5` (best validation loss checkpoint)
+- Load and balance the dataset (saves `steering_distribution.png`)
+- Train the CNN for up to 30 epochs
+- Save `model.h5` to the project root
 - Save `training_loss.png`
-
-Expected training time: ~10–25 minutes on GPU, ~1–2 hours on CPU.
 
 ---
 
-## Step-by-Step: Run Autonomous Mode
-
-1. Start the inference server:
+## Run Autonomous Mode
 
 ```bash
+# 1. Start the inference server
 python TestSimulation.py
-```
 
-2. Launch `beta_simulator.exe`
-3. Choose the **same track** used for data collection
-4. Select **Autonomous Mode**
-5. The car should start driving automatically
+# 2. Open beta_simulator.exe → same track → Autonomous Mode
+```
 
 ---
 
@@ -170,9 +153,9 @@ python TestSimulation.py
 
 | File | Description |
 |------|-------------|
-| `steering_distribution.png` | Before/after histogram showing dataset balancing |
-| `training_loss.png` | Training vs validation MSE loss per epoch |
-| `models/model.h5` | Best trained model checkpoint |
+| `steering_distribution.png` | Before/after histogram of dataset balancing |
+| `training_loss.png` | Training vs validation loss per epoch |
+| `model.h5` | Best trained model checkpoint |
 
 ---
 
